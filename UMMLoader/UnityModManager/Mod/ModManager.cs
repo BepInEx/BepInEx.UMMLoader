@@ -1,16 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using UnityEngine;
-using Debug = UnityEngine.Debug;
 
 namespace UnityModManagerNet
 {
 	public partial class UnityModManager
 	{
+		private static readonly Version VER_0 = new Version();
+
 		private static readonly Version VER_0_13 = new Version(0, 13);
 
 		public static readonly List<ModEntry> modEntries = new List<ModEntry>();
@@ -18,7 +18,15 @@ namespace UnityModManagerNet
 		internal static bool started;
 		internal static bool initialized;
 
+		/// <summary>
+		///     Contains version of UnityEngine
+		/// </summary>
 		public static Version unityVersion { get; private set; }
+
+		/// <summary>
+		///     Contains version of a game, if configured [0.15.0]
+		/// </summary>
+		public static Version gameVersion { get; private set; } = new Version();
 
 		public static Version version { get; } = typeof(UnityModManager).Assembly.GetName().Version;
 		public static string modsPath { get; private set; }
@@ -37,16 +45,18 @@ namespace UnityModManagerNet
 
 			Logger.Log($"Initialize. Version '{version}'.");
 
+			unityVersion = ParseVersion(Application.unityVersion);
+
 			Config = GameInfo.Load();
 			if (Config == null)
 				return false;
+
+			Params = Param.Load();
 
 			modsPath = Path.Combine(Environment.CurrentDirectory, Config.ModsDirectory);
 
 			if (!Directory.Exists(modsPath))
 				Directory.CreateDirectory(modsPath);
-
-			unityVersion = ParseVersion(Application.unityVersion);
 
 			AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
 
@@ -94,6 +104,54 @@ namespace UnityModManagerNet
 			}
 		}
 
+		private static void ParseGameVersion()
+		{
+			if (string.IsNullOrEmpty(Config.GameVersionPoint))
+				return;
+			try
+			{
+				Logger.Log("Start parsing game version.");
+				if (!Injector.TryParseEntryPoint(Config.GameVersionPoint, out string assembly, out string className, out string methodName, out _))
+					return;
+				var asm = Assembly.Load(assembly);
+				if (asm == null)
+				{
+					Logger.Error($"File '{assembly}' not found.");
+					return;
+				}
+
+				var foundClass = asm.GetType(className);
+				if (foundClass == null)
+				{
+					Logger.Error($"Class '{className}' not found.");
+					return;
+				}
+
+				var foundMethod = foundClass.GetMethod(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+				if (foundMethod == null)
+				{
+					var foundField = foundClass.GetField(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+					if (foundField != null)
+					{
+						gameVersion = ParseVersion(foundField.GetValue(null).ToString());
+						Logger.Log($"Game version detected as '{gameVersion}'.");
+						return;
+					}
+
+					Logger.Error($"Method '{methodName}' not found.");
+					return;
+				}
+
+				gameVersion = ParseVersion(foundMethod.Invoke(null, null).ToString());
+				Logger.Log($"Game version detected as '{gameVersion}'.");
+			}
+			catch (Exception e)
+			{
+				Debug.LogException(e);
+				OpenUnityFileLog();
+			}
+		}
+
 		private static void _Start()
 		{
 			if (!Initialize())
@@ -110,6 +168,8 @@ namespace UnityModManagerNet
 			}
 
 			started = true;
+
+			ParseGameVersion();
 
 			if (Directory.Exists(modsPath))
 			{
@@ -158,25 +218,22 @@ namespace UnityModManagerNet
 					}
 				}
 
-				Params = Param.Load();
-
 				if (mods.Count > 0)
 				{
 					Logger.Log("Sorting mods.");
 					TopoSort(mods);
 
+					Params.ReadModParams();
+
 					Logger.Log("Loading mods.");
 					foreach (var mod in modEntries)
-					{
-						var stopwatch = Stopwatch.StartNew();
-						mod.Load();
-						mod.Logger.NativeLog($"Loading time {stopwatch.ElapsedMilliseconds / 1000f:f2} s.");
-					}
+						if (!mod.Enabled)
+							mod.Logger.Log("To skip (disabled).");
+						else
+							mod.Active = true;
 				}
 
-				Logger.Log(
-					$"Finish. Found {countMods} mods. Successful loaded {modEntries.Count(x => !x.ErrorOnLoading)} mods.\n\n"
-						.ToUpper());
+				Logger.Log($"Finish. Found {countMods} mods. Successful loaded {modEntries.Count(x => !x.ErrorOnLoading)} mods.\n\n".ToUpper());
 			}
 
 			if (!UI.Load())
@@ -198,15 +255,9 @@ namespace UnityModManagerNet
 				DFS(id, mods);
 		}
 
-		public static ModEntry FindMod(string id)
-		{
-			return modEntries.FirstOrDefault(x => x.Info.Id == id);
-		}
+		public static ModEntry FindMod(string id) { return modEntries.FirstOrDefault(x => x.Info.Id == id); }
 
-		public static Version GetVersion()
-		{
-			return version;
-		}
+		public static Version GetVersion() { return version; }
 
 		public static void SaveSettingsAndParams()
 		{

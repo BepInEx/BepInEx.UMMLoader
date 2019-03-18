@@ -49,8 +49,7 @@ namespace UnityModManagerNet
 						if (modEntry == null)
 							continue;
 						var ver = ParseVersion(release.Version);
-						if (modEntry.Version < ver &&
-							(modEntry.NewestVersion == null || modEntry.NewestVersion < ver))
+						if (modEntry.Version < ver && (modEntry.NewestVersion == null || modEntry.NewestVersion < ver))
 							modEntry.NewestVersion = ver;
 					}
 			}
@@ -66,9 +65,7 @@ namespace UnityModManagerNet
 			try
 			{
 				using (var ping = new Ping())
-				{
 					return ping.Send("www.google.com.mx", 2000).Status == IPStatus.Success;
-				}
 			}
 			catch (Exception e)
 			{

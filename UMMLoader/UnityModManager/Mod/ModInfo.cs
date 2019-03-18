@@ -13,6 +13,7 @@ namespace UnityModManagerNet
 			public string DisplayName;
 
 			public string EntryMethod;
+			public string GameVersion;
 
 			public string HomePage;
 			public string Id;
@@ -25,15 +26,9 @@ namespace UnityModManagerNet
 
 			public string Version;
 
-			public bool Equals(ModInfo other)
-			{
-				return Id.Equals(other.Id);
-			}
+			public bool Equals(ModInfo other) { return Id.Equals(other.Id); }
 
-			public static implicit operator bool(ModInfo exists)
-			{
-				return exists != null;
-			}
+			public static implicit operator bool(ModInfo exists) { return exists != null; }
 
 			public override bool Equals(object obj)
 			{
@@ -42,10 +37,7 @@ namespace UnityModManagerNet
 				return obj is ModInfo modInfo && Equals(modInfo);
 			}
 
-			public override int GetHashCode()
-			{
-				return Id.GetHashCode();
-			}
+			public override int GetHashCode() { return Id.GetHashCode(); }
 		}
 	}
 }

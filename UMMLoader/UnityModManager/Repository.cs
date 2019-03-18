@@ -17,10 +17,7 @@ namespace UnityModManagerNet
 				public string Id;
 				public string Version;
 
-				public bool Equals(Release other)
-				{
-					return Id.Equals(other.Id);
-				}
+				public bool Equals(Release other) { return Id.Equals(other.Id); }
 
 				public override bool Equals(object obj)
 				{
@@ -29,10 +26,7 @@ namespace UnityModManagerNet
 					return obj is Release obj2 && Equals(obj2);
 				}
 
-				public override int GetHashCode()
-				{
-					return Id.GetHashCode();
-				}
+				public override int GetHashCode() { return Id.GetHashCode(); }
 			}
 		}
 	}

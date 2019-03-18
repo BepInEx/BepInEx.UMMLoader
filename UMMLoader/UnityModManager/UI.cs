@@ -22,6 +22,11 @@ namespace UnityModManagerNet
 			private static GUIStyle www;
 			private static GUIStyle updates;
 
+			/// <summary>
+			///     [0.13.1]
+			/// </summary>
+			public static GUIStyle button = null;
+
 			private readonly string[] mCheckUpdateStrings = { "Never", "Automatic" };
 
 			private readonly List<Column> mColumns = new List<Column>
@@ -33,19 +38,35 @@ namespace UnityModManagerNet
 				new Column { name = "Status", width = 50 }
 			};
 
-			private readonly string[] mShortcutNames = { "CTRL+F10", "ScrollLock", "Num *", "~" };
+			private readonly string[] mHotkeyNames = { "CTRL+F10", "ScrollLock", "Num *", "~" };
 
 			private readonly string[] mShowOnStartStrings = { "No", "Yes" };
 
+			public int globalFontSize = 13;
+
 			private GameObject mCanvas;
+			private Resolution mCurrentResolution;
+			private float mExpectedUIScale = 1f;
 			private Vector2 mExpectedWindowSize = Vector2.zero;
 
-			private bool mFirstLaunch;
+			private bool mFirstLaunched;
 			private bool mInit;
+
+			private readonly List<Column> mOriginColumns = new List<Column>
+			{
+				new Column { name = "Name", width = 200, expand = true },
+				new Column { name = "Version", width = 60 },
+				new Column { name = "Requirements", width = 150, expand = true },
+				new Column { name = "On/Off", width = 50 },
+				new Column { name = "Status", width = 50 }
+			};
 
 			private Vector2[] mScrollPosition = new Vector2[0];
 
 			private int mShowModSettings = -1;
+
+			private float mUIScale = 1f;
+			private bool mUIScaleChanged;
 
 			private Rect mWindowRect = new Rect(0, 0, 0, 0);
 			private Vector2 mWindowSize = Vector2.zero;
@@ -84,27 +105,25 @@ namespace UnityModManagerNet
 				DontDestroyOnLoad(this);
 				mWindowSize = ClampWindowSize(new Vector2(Params.WindowWidth, Params.WindowHeight));
 				mExpectedWindowSize = mWindowSize;
+				mUIScale = Mathf.Clamp(Params.UIScale, 0.5f, 2f);
+				mExpectedUIScale = mUIScale;
 				Textures.Init();
 				var harmony = HarmonyInstance.Create("UnityModManager.UI");
 				var original = typeof(Screen).GetMethod("set_lockCursor");
-				var prefix =
-					typeof(Screen_lockCursor_Patch).GetMethod("Prefix", BindingFlags.Static | BindingFlags.NonPublic);
+				var prefix = typeof(Screen_lockCursor_Patch).GetMethod("Prefix", BindingFlags.Static | BindingFlags.NonPublic);
 				harmony.Patch(original, new HarmonyMethod(prefix));
 			}
 
 			private void Start()
 			{
 				CalculateWindowPos();
-				if (Params.ShowOnStart == 1 && string.IsNullOrEmpty(Config.UIStartingPoint))
+				if (string.IsNullOrEmpty(Config.UIStartingPoint))
 					FirstLaunch();
 				if (Params.CheckUpdates == 1)
 					CheckModUpdates();
 			}
 
-			private void OnDestroy()
-			{
-				SaveSettingsAndParams();
-			}
+			private void OnDestroy() { SaveSettingsAndParams(); }
 
 			private void Update()
 			{
@@ -126,8 +145,7 @@ namespace UnityModManagerNet
 				switch (Params.ShortcutKeyId)
 				{
 					default:
-						if (Input.GetKeyUp(KeyCode.F10) &&
-							(Input.GetKey(KeyCode.RightControl) || Input.GetKey(KeyCode.LeftControl)))
+						if (Input.GetKeyUp(KeyCode.F10) && (Input.GetKey(KeyCode.RightControl) || Input.GetKey(KeyCode.LeftControl)))
 							toggle = true;
 
 						break;
@@ -149,6 +167,9 @@ namespace UnityModManagerNet
 				}
 
 				if (toggle)
+					ToggleWindow();
+
+				if (Opened && Input.GetKey(KeyCode.Escape))
 					ToggleWindow();
 			}
 
@@ -188,64 +209,59 @@ namespace UnityModManagerNet
 			{
 				window = new GUIStyle { name = "umm window", normal = { background = Textures.Window } };
 				window.normal.background.wrapMode = TextureWrapMode.Repeat;
-				window.padding = RectOffset(5);
 
-				h1 = new GUIStyle
-				{
-					name = "umm h1",
-					normal = { textColor = Color.white },
-					fontSize = 16,
-					fontStyle = FontStyle.Bold,
-					alignment = TextAnchor.MiddleCenter,
-					margin = RectOffset(0, 5)
-				};
+				h1 = new GUIStyle { name = "umm h1", normal = { textColor = Color.white }, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
 
-				h2 = new GUIStyle
-				{
-					name = "umm h2",
-					normal = { textColor = new Color(0.6f, 0.91f, 1f) },
-					fontSize = 13,
-					fontStyle = FontStyle.Bold,
-					margin = RectOffset(0, 3)
-				};
+				h2 = new GUIStyle { name = "umm h2", normal = { textColor = new Color(0.6f, 0.91f, 1f) }, fontStyle = FontStyle.Bold };
 
-				bold = new GUIStyle(GUI.skin.label)
-				{
-					name = "umm bold", normal = { textColor = Color.white }, fontStyle = FontStyle.Bold
-				};
+				bold = new GUIStyle(GUI.skin.label) { name = "umm bold", normal = { textColor = Color.white }, fontStyle = FontStyle.Bold };
+
+				settings = new GUIStyle { alignment = TextAnchor.MiddleCenter, stretchHeight = true };
+
+				status = new GUIStyle { alignment = TextAnchor.MiddleCenter, stretchHeight = true };
+
+				www = new GUIStyle { alignment = TextAnchor.MiddleCenter, stretchHeight = true };
+
+				updates = new GUIStyle { alignment = TextAnchor.MiddleCenter, stretchHeight = true };
+			}
+
+			private void ScaleGUI()
+			{
+				GUI.skin.font = Font.CreateDynamicFontFromOSFont(new[] { "Arial" }, Scale(globalFontSize));
+				GUI.skin.button.padding = new RectOffset(Scale(10), Scale(10), Scale(3), Scale(3));
+				//GUI.skin.button.margin = RectOffset(Scale(4), Scale(2));
+
+				GUI.skin.horizontalSlider.fixedHeight = Scale(12);
+				GUI.skin.horizontalSlider.border = RectOffset(3, 0);
+				GUI.skin.horizontalSlider.padding = RectOffset(Scale(-1), 0);
+				GUI.skin.horizontalSlider.margin = RectOffset(Scale(4), Scale(8));
+
+				GUI.skin.horizontalSliderThumb.fixedHeight = Scale(12);
+				GUI.skin.horizontalSliderThumb.border = RectOffset(4, 0);
+				GUI.skin.horizontalSliderThumb.padding = RectOffset(Scale(7), 0);
+				GUI.skin.horizontalSliderThumb.margin = RectOffset(0);
+
+				window.padding = RectOffset(Scale(5));
+				h1.fontSize = Scale(16);
+				h1.margin = RectOffset(Scale(0), Scale(5));
+				h2.fontSize = Scale(13);
+				h2.margin = RectOffset(Scale(0), Scale(3));
+				button.fontSize = Scale(13);
+				button.padding = RectOffset(Scale(30), Scale(5));
 
 				var iconHeight = 28;
-				settings = new GUIStyle
-				{
-					alignment = TextAnchor.MiddleCenter,
-					stretchHeight = true,
-					fixedWidth = 24,
-					fixedHeight = iconHeight
-				};
+				settings.fixedWidth = Scale(24);
+				settings.fixedHeight = Scale(iconHeight);
+				status.fixedWidth = Scale(12);
+				status.fixedHeight = Scale(iconHeight);
+				www.fixedWidth = Scale(24);
+				www.fixedHeight = Scale(iconHeight);
+				updates.fixedWidth = Scale(26);
+				updates.fixedHeight = Scale(iconHeight);
 
-				status = new GUIStyle
-				{
-					alignment = TextAnchor.MiddleCenter,
-					stretchHeight = true,
-					fixedWidth = 12,
-					fixedHeight = iconHeight
-				};
-
-				www = new GUIStyle
-				{
-					alignment = TextAnchor.MiddleCenter,
-					stretchHeight = true,
-					fixedWidth = 24,
-					fixedHeight = iconHeight
-				};
-
-				updates = new GUIStyle
-				{
-					alignment = TextAnchor.MiddleCenter,
-					stretchHeight = true,
-					fixedWidth = 26,
-					fixedHeight = iconHeight
-				};
+				mColumns.Clear();
+				foreach (var column in mOriginColumns)
+					mColumns.Add(new Column { name = column.name, width = Scale(column.width), expand = column.expand, skip = column.skip });
 			}
 
 			private void OnGUI()
@@ -254,19 +270,45 @@ namespace UnityModManagerNet
 				{
 					mInit = true;
 					PrepareGUI();
+					ScaleGUI();
 				}
 
 				if (Opened)
 				{
+					if (mCurrentResolution.width != Screen.currentResolution.width || mCurrentResolution.height != Screen.currentResolution.height)
+					{
+						mCurrentResolution = Screen.currentResolution;
+						CalculateWindowPos();
+					}
+
+					if (mUIScaleChanged)
+					{
+						mUIScaleChanged = false;
+						ScaleGUI();
+					}
+
 					var backgroundColor = GUI.backgroundColor;
 					var color = GUI.color;
 					GUI.backgroundColor = Color.white;
 					GUI.color = Color.white;
-					mWindowRect = GUILayout.Window(0, mWindowRect, WindowFunction, "", window,
-						GUILayout.Height(mWindowSize.y));
+					mWindowRect = GUILayout.Window(0, mWindowRect, WindowFunction, "", window, GUILayout.Height(mWindowSize.y));
 					GUI.backgroundColor = backgroundColor;
 					GUI.color = color;
 				}
+			}
+
+			public static int Scale(int value)
+			{
+				if (!Instance)
+					return value;
+				return (int)(value * Instance.mUIScale);
+			}
+
+			private float Scale(float value)
+			{
+				if (!Instance)
+					return value;
+				return value * mUIScale;
 			}
 
 			private void CalculateWindowPos()
@@ -275,11 +317,7 @@ namespace UnityModManagerNet
 				mWindowRect = new Rect((Screen.width - mWindowSize.x) / 2f, (Screen.height - mWindowSize.y) / 2f, 0, 0);
 			}
 
-			private Vector2 ClampWindowSize(Vector2 orig)
-			{
-				return new Vector2(Mathf.Clamp(orig.x, Mathf.Min(960, Screen.width), Screen.width),
-					Mathf.Clamp(orig.y, Mathf.Min(720, Screen.height), Screen.height));
-			}
+			private Vector2 ClampWindowSize(Vector2 orig) { return new Vector2(Mathf.Clamp(orig.x, Mathf.Min(960, Screen.width), Screen.width), Mathf.Clamp(orig.y, Mathf.Min(720, Screen.height), Screen.height)); }
 
 			private void WindowFunction(int windowId)
 			{
@@ -292,7 +330,7 @@ namespace UnityModManagerNet
 
 				GUILayout.Space(3);
 
-				tabId = GUILayout.Toolbar(tabId, tabs, GUILayout.Width(150 * tabs.Length));
+				tabId = GUILayout.Toolbar(tabId, tabs, button, GUILayout.ExpandWidth(false));
 
 				GUILayout.Space(5);
 
@@ -304,10 +342,10 @@ namespace UnityModManagerNet
 				GUILayout.FlexibleSpace();
 				GUILayout.Space(5);
 				GUILayout.BeginHorizontal();
-				if (GUILayout.Button("Close", GUILayout.Width(150)))
+				if (GUILayout.Button("Close", button, GUILayout.ExpandWidth(false)))
 					ToggleWindow();
 
-				if (GUILayout.Button("Save", GUILayout.Width(150)))
+				if (GUILayout.Button("Save", button, GUILayout.ExpandWidth(false)))
 					SaveSettingsAndParams();
 
 				buttons();
@@ -318,18 +356,13 @@ namespace UnityModManagerNet
 			{
 				var minWidth = GUILayout.MinWidth(mWindowSize.x);
 
-				mScrollPosition[tabId] = GUILayout.BeginScrollView(mScrollPosition[tabId], minWidth,
-					GUILayout.ExpandHeight(false));
+				mScrollPosition[tabId] = GUILayout.BeginScrollView(mScrollPosition[tabId], minWidth, GUILayout.ExpandHeight(false));
 
 				float amountWidth = mColumns.Where(x => !x.skip).Sum(x => x.width);
 				float expandWidth = mColumns.Where(x => x.expand && !x.skip).Sum(x => x.width);
 
 				var mods = modEntries;
-				var colWidth = mColumns.Select(x =>
-					x.expand
-						? GUILayout.Width(x.width / expandWidth *
-										  (mWindowSize.x - 60 + expandWidth - amountWidth))
-						: GUILayout.Width(x.width)).ToArray();
+				var colWidth = mColumns.Select(x => x.expand ? GUILayout.Width(x.width / expandWidth * (mWindowSize.x - 60 + expandWidth - amountWidth)) : GUILayout.Width(x.width)).ToArray();
 
 				GUILayout.BeginVertical("box");
 
@@ -350,21 +383,16 @@ namespace UnityModManagerNet
 					GUILayout.BeginHorizontal();
 
 					GUILayout.BeginHorizontal(colWidth[++col]);
-					if (mods[i].OnGUI != null)
+					if (mods[i].OnGUI != null || mods[i].CanReload)
 					{
-						if (GUILayout.Button(mods[i].Info.DisplayName, GUI.skin.label,
-							GUILayout.ExpandWidth(true)))
+						if (GUILayout.Button(mods[i].Info.DisplayName, GUI.skin.label, GUILayout.ExpandWidth(true)))
 							mShowModSettings = mShowModSettings == i ? -1 : i;
 
-						if (GUILayout.Button(
-							mShowModSettings == i ? Textures.SettingsActive : Textures.SettingsNormal, settings)
-						)
+						if (GUILayout.Button(mShowModSettings == i ? Textures.SettingsActive : Textures.SettingsNormal, settings))
 							mShowModSettings = mShowModSettings == i ? -1 : i;
 					}
 					else
-					{
 						GUILayout.Label(mods[i].Info.DisplayName);
-					}
 
 					if (!string.IsNullOrEmpty(mods[i].Info.HomePage))
 					{
@@ -388,19 +416,20 @@ namespace UnityModManagerNet
 					GUILayout.EndHorizontal();
 
 					if (mods[i].ManagerVersion > GetVersion())
-					{
-						GUI.color = new Color32(255, 81, 83, 255);
-						GUILayout.Label("Manager-" + mods[i].Info.ManagerVersion, colWidth[++col]);
-						GUI.color = Color.white;
-					}
+						GUILayout.Label("<color=\"#CD5C5C\">Manager-" + mods[i].Info.ManagerVersion + "</color>", colWidth[++col]);
 					else if (mods[i].Requirements.Count > 0)
-					{
-						GUILayout.Label(string.Join("\r\n", mods[i].Info.Requirements), colWidth[++col]);
-					}
+						foreach (var item in mods[i].Requirements)
+						{
+							string id = item.Key;
+							var mod = FindMod(id);
+							GUILayout.Label((mod == null || item.Value != null && item.Value > mod.Version || !mod.Active) && mods[i].Active ? "<color=\"#CD5C5C\">" + id + "</color>" : id, colWidth[++col]);
+						}
+					else if (gameVersion != VER_0 && mods[i].GameVersion > gameVersion)
+						GUILayout.Label("<color=\"#CD5C5C\">Game-" + mods[i].Info.GameVersion + "</color>", colWidth[++col]);
+					else if (!string.IsNullOrEmpty(mods[i].CustomRequirements))
+						GUILayout.Label(mods[i].CustomRequirements, colWidth[++col]);
 					else
-					{
 						GUILayout.Label("-", colWidth[++col]);
-					}
 
 					bool action = mods[i].Enabled;
 					action = GUILayout.Toggle(action, "", colWidth[++col]);
@@ -409,29 +438,40 @@ namespace UnityModManagerNet
 						mods[i].Enabled = action;
 						if (mods[i].Toggleable)
 							mods[i].Active = action;
+						else if (action && !mods[i].Loaded)
+							mods[i].Active = true;
 					}
 
 					if (mods[i].Active)
-						GUILayout.Box(mods[i].Enabled ? Textures.StatusActive : Textures.StatusNeedRestart,
-							status);
+						GUILayout.Box(mods[i].Enabled ? Textures.StatusActive : Textures.StatusNeedRestart, status);
 					else
-						GUILayout.Box(!mods[i].Enabled ? Textures.StatusInactive : Textures.StatusNeedRestart,
-							status);
+						GUILayout.Box(!mods[i].Enabled ? Textures.StatusInactive : Textures.StatusNeedRestart, status);
 
 					GUILayout.EndHorizontal();
 
-					if (mShowModSettings == i && mods[i].Active)
+					if (mShowModSettings == i)
 					{
-						GUILayout.Label("Options", h2);
-						try
+						if (mods[i].CanReload)
 						{
-							mods[i].OnGUI(mods[i]);
+							GUILayout.Label("Debug", h2);
+							if (GUILayout.Button("Reload", button, GUILayout.ExpandWidth(false)))
+								mods[i].Reload();
+							GUILayout.Space(5);
 						}
-						catch (Exception e)
+
+						if (mods[i].Active && mods[i].OnGUI != null)
 						{
-							mShowModSettings = -1;
-							mods[i].Logger.Error("OnGUI: " + e.GetType().Name + " - " + e.Message);
-							Debug.LogException(e);
+							GUILayout.Label("Options", h2);
+							try
+							{
+								mods[i].OnGUI(mods[i]);
+							}
+							catch (Exception e)
+							{
+								mShowModSettings = -1;
+								mods[i].Logger.Error("OnGUI: " + e.GetType().Name + " - " + e.Message);
+								Debug.LogException(e);
+							}
 						}
 					}
 
@@ -494,9 +534,9 @@ namespace UnityModManagerNet
 
 				buttons += delegate
 				{
-					if (GUILayout.Button("Clear", GUILayout.Width(150)))
+					if (GUILayout.Button("Clear", button, GUILayout.ExpandWidth(false)))
 						Logger.Clear();
-					if (GUILayout.Button("Open detailed log", GUILayout.Width(150)))
+					if (GUILayout.Button("Open detailed log", button, GUILayout.ExpandWidth(false)))
 						OpenUnityFileLog();
 				};
 			}
@@ -511,51 +551,64 @@ namespace UnityModManagerNet
 
 				GUILayout.BeginHorizontal();
 				GUILayout.Label("Hotkey", GUILayout.ExpandWidth(false));
-				Params.ShortcutKeyId =
-					GUILayout.Toolbar(Params.ShortcutKeyId, mShortcutNames, GUILayout.ExpandWidth(false));
+				Params.ShortcutKeyId = GUILayout.Toolbar(Params.ShortcutKeyId, mHotkeyNames, GUILayout.ExpandWidth(false));
 				GUILayout.EndHorizontal();
 
 				GUILayout.Space(5);
 
 				GUILayout.BeginHorizontal();
 				GUILayout.Label("Check updates", GUILayout.ExpandWidth(false));
-				Params.CheckUpdates = GUILayout.Toolbar(Params.CheckUpdates, mCheckUpdateStrings,
-					GUILayout.ExpandWidth(false));
+				Params.CheckUpdates = GUILayout.Toolbar(Params.CheckUpdates, mCheckUpdateStrings, GUILayout.ExpandWidth(false));
 				GUILayout.EndHorizontal();
+
+				GUILayout.Space(5);
 
 				GUILayout.BeginHorizontal();
 				GUILayout.Label("Show this window on startup", GUILayout.ExpandWidth(false));
-				Params.ShowOnStart = GUILayout.Toolbar(Params.ShowOnStart, mShowOnStartStrings,
-					GUILayout.ExpandWidth(false));
+				Params.ShowOnStart = GUILayout.Toolbar(Params.ShowOnStart, mShowOnStartStrings, GUILayout.ExpandWidth(false));
 				GUILayout.EndHorizontal();
+
+				GUILayout.Space(5);
 
 				GUILayout.BeginVertical("box");
 				GUILayout.Label("Window size", bold, GUILayout.ExpandWidth(false));
 				GUILayout.BeginHorizontal();
 				GUILayout.Label("Width ", GUILayout.ExpandWidth(false));
-				mExpectedWindowSize.x = GUILayout.HorizontalSlider(mExpectedWindowSize.x,
-					Mathf.Min(Screen.width, 960), Screen.width, GUILayout.Width(200));
-				GUILayout.Label($" {mExpectedWindowSize.x:f0} px ", GUILayout.ExpandWidth(false));
+				mExpectedWindowSize.x = GUILayout.HorizontalSlider(mExpectedWindowSize.x, Mathf.Min(Screen.width, 960), Screen.width, GUILayout.Width(200));
+				GUILayout.Label(" " + mExpectedWindowSize.x.ToString("f0") + " px ", GUILayout.ExpandWidth(false));
 				GUILayout.EndHorizontal();
 				GUILayout.BeginHorizontal();
 				GUILayout.Label("Height", GUILayout.ExpandWidth(false));
-				mExpectedWindowSize.y = GUILayout.HorizontalSlider(mExpectedWindowSize.y,
-					Mathf.Min(Screen.height, 720), Screen.height, GUILayout.Width(200));
-				GUILayout.Label($" {mExpectedWindowSize.y:f0} px ", GUILayout.ExpandWidth(false));
+				mExpectedWindowSize.y = GUILayout.HorizontalSlider(mExpectedWindowSize.y, Mathf.Min(Screen.height, 720), Screen.height, GUILayout.Width(200));
+				GUILayout.Label(" " + mExpectedWindowSize.y.ToString("f0") + " px ", GUILayout.ExpandWidth(false));
 				GUILayout.EndHorizontal();
-
-				if (GUILayout.Button("Apply", GUILayout.ExpandWidth(false)))
+				if (GUILayout.Button("Apply", button, GUILayout.ExpandWidth(false)))
 				{
-					mWindowSize.x = Mathf.Floor(mExpectedWindowSize.x) % 2 > 0
-						? Mathf.Ceil(mExpectedWindowSize.x)
-						: Mathf.Floor(mExpectedWindowSize.x);
-					mWindowSize.y = Mathf.Floor(mExpectedWindowSize.y) % 2 > 0
-						? Mathf.Ceil(mExpectedWindowSize.y)
-						: Mathf.Floor(mExpectedWindowSize.y);
+					mWindowSize.x = Mathf.Floor(mExpectedWindowSize.x) % 2 > 0 ? Mathf.Ceil(mExpectedWindowSize.x) : Mathf.Floor(mExpectedWindowSize.x);
+					mWindowSize.y = Mathf.Floor(mExpectedWindowSize.y) % 2 > 0 ? Mathf.Ceil(mExpectedWindowSize.y) : Mathf.Floor(mExpectedWindowSize.y);
 					CalculateWindowPos();
 					Params.WindowWidth = mWindowSize.x;
 					Params.WindowHeight = mWindowSize.y;
 				}
+
+				GUILayout.EndVertical();
+
+				GUILayout.Space(5);
+
+				GUILayout.BeginVertical("box");
+				GUILayout.Label("UI", bold, GUILayout.ExpandWidth(false));
+				GUILayout.BeginHorizontal();
+				GUILayout.Label("Scale", GUILayout.ExpandWidth(false), GUILayout.ExpandWidth(false));
+				mExpectedUIScale = GUILayout.HorizontalSlider(mExpectedUIScale, 0.5f, 2f, GUILayout.Width(200));
+				GUILayout.Label(" " + mExpectedUIScale.ToString("f2"), GUILayout.ExpandWidth(false));
+				GUILayout.EndHorizontal();
+				if (GUILayout.Button("Apply", button, GUILayout.ExpandWidth(false)))
+					if (mUIScale != mExpectedUIScale)
+					{
+						mUIScaleChanged = true;
+						mUIScale = mExpectedUIScale;
+						Params.UIScale = mUIScale;
+					}
 
 				GUILayout.EndVertical();
 
@@ -565,51 +618,46 @@ namespace UnityModManagerNet
 
 			public void FirstLaunch()
 			{
-				if (mFirstLaunch)
+				if (mFirstLaunched || Params.ShowOnStart == 0 && modEntries.All(x => !x.ErrorOnLoading))
 					return;
 
-				mFirstLaunch = true;
-				try
-				{
-					ToggleWindow(true);
-				}
-				catch (Exception e)
-				{
-					Logger.Error($"FirstLaunch: {e.GetType().Name} - {e.Message}");
-					Debug.LogException(e);
-				}
+				ToggleWindow(true);
 			}
 
-			public void ToggleWindow()
-			{
-				ToggleWindow(!Opened);
-			}
+			public void ToggleWindow() { ToggleWindow(!Opened); }
 
 			public void ToggleWindow(bool open)
 			{
 				if (open == Opened)
 					return;
 
-				Opened = open;
-				BlockGameUI(open);
-				if (!open)
-					SaveSettingsAndParams();
 				if (open)
+					mFirstLaunched = true;
+
+				try
 				{
-					GameCursorLocked = Cursor.lockState == CursorLockMode.Locked || !Cursor.visible;
-					if (GameCursorLocked)
+					Opened = open;
+					BlockGameUI(open);
+					if (open)
 					{
+						GameCursorLocked = Cursor.lockState == CursorLockMode.Locked || !Cursor.visible;
+						if (!GameCursorLocked)
+							return;
 						Cursor.visible = true;
 						Cursor.lockState = CursorLockMode.None;
 					}
-				}
-				else
-				{
-					if (GameCursorLocked)
+					else
 					{
+						if (!GameCursorLocked)
+							return;
 						Cursor.visible = false;
 						Cursor.lockState = CursorLockMode.Locked;
 					}
+				}
+				catch (Exception e)
+				{
+					Logger.Error("ToggleWindow: " + e.GetType().Name + " - " + e.Message);
+					Debug.LogException(e);
 				}
 			}
 
@@ -630,25 +678,20 @@ namespace UnityModManagerNet
 				}
 				else
 				{
-					Destroy(mCanvas);
+					if (mCanvas)
+						Destroy(mCanvas);
 				}
 			}
 
-			private static RectOffset RectOffset(int value)
-			{
-				return new RectOffset(value, value, value, value);
-			}
+			private static RectOffset RectOffset(int value) { return new RectOffset(value, value, value, value); }
 
-			private static RectOffset RectOffset(int x, int y)
-			{
-				return new RectOffset(x, x, y, y);
-			}
+			private static RectOffset RectOffset(int x, int y) { return new RectOffset(x, x, y, y); }
 
 			private delegate void DrawTabDelegate(ref UnityAction buttons);
 
 			private class Column
 			{
-				public readonly bool skip = false;
+				public bool skip;
 				public bool expand;
 				public string name;
 				public float width;

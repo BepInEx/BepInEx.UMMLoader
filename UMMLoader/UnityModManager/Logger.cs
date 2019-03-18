@@ -14,35 +14,17 @@ namespace UnityModManagerNet
 			internal static int historyCapacity = 200;
 			internal static List<string> history = new List<string>(historyCapacity * 2);
 
-			public static void NativeLog(string str)
-			{
-				NativeLog(str, Prefix);
-			}
+			public static void NativeLog(string str) { NativeLog(str, Prefix); }
 
-			public static void NativeLog(string str, string prefix)
-			{
-				Write($"{prefix} {str}");
-			}
+			public static void NativeLog(string str, string prefix) { Write($"{prefix} {str}"); }
 
-			public static void Log(string str)
-			{
-				Log(str, Prefix);
-			}
+			public static void Log(string str) { Log(str, Prefix); }
 
-			public static void Log(string str, string prefix)
-			{
-				Write($"{prefix} {str}");
-			}
+			public static void Log(string str, string prefix) { Write($"{prefix} {str}"); }
 
-			public static void Error(string str)
-			{
-				Error(str, PrefixError);
-			}
+			public static void Error(string str) { Error(str, PrefixError); }
 
-			public static void Error(string str, string prefix)
-			{
-				Write(prefix + str, false, true);
-			}
+			public static void Error(string str, string prefix) { Write(prefix + str, false, true); }
 
 			private static void Write(string str, bool onlyNative = false, bool error = false)
 			{
@@ -64,10 +46,7 @@ namespace UnityModManagerNet
 				}
 			}
 
-			public static void Clear()
-			{
-				history.Clear();
-			}
+			public static void Clear() { history.Clear(); }
 		}
 	}
 }

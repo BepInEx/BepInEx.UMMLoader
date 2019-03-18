@@ -9,15 +9,9 @@ namespace UnityModManagerNet
 	{
 		public class ModSettings
 		{
-			public virtual void Save(ModEntry modEntry)
-			{
-				Save(this, modEntry);
-			}
+			public virtual void Save(ModEntry modEntry) { Save(this, modEntry); }
 
-			public virtual string GetPath(ModEntry modEntry)
-			{
-				return Path.Combine(modEntry.Path, "Settings.xml");
-			}
+			public virtual string GetPath(ModEntry modEntry) { return Path.Combine(modEntry.Path, "Settings.xml"); }
 
 			public static void Save<T>(T data, ModEntry modEntry) where T : ModSettings, new()
 			{

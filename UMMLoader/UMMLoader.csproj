@@ -34,6 +34,9 @@
     <Reference Include="0Harmony">
       <HintPath>..\lib\0Harmony.dll</HintPath>
     </Reference>
+    <Reference Include="0Harmony12">
+      <HintPath>..\lib\0Harmony12.dll</HintPath>
+    </Reference>
     <Reference Include="BepInEx">
       <HintPath>..\lib\BepInEx.dll</HintPath>
     </Reference>
@@ -53,6 +56,8 @@
   <ItemGroup>
     <Compile Include="UMMLoader.cs" />
     <Compile Include="UnityModManager\Config.cs" />
+    <Compile Include="UnityModManager\Injector.cs" />
+    <Compile Include="UnityModManager\Mod\Attributes.cs" />
     <Compile Include="UnityModManager\Mod\ModLogger.cs" />
     <Compile Include="UnityModManager\Mod\ModEntry.cs" />
     <Compile Include="UnityModManager\Mod\ModInfo.cs" />
@@ -63,9 +68,7 @@
     <Compile Include="UnityModManager\Textures.cs" />
     <Compile Include="UnityModManager\UI.cs" />
     <Compile Include="UnityModManager\Logger.cs" />
-    <Compile Include="UnityModManager\Param.cs" />
     <Compile Include="UnityModManager\Updates.cs" />
-    <Compile Include="UnityModManager\Upgrades.cs" />
     <Compile Include="UnityModManager\Utils.cs" />
   </ItemGroup>
   <ItemGroup>
