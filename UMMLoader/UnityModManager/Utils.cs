@@ -18,6 +18,7 @@ namespace UnityModManagerNet
 				string filepath = Path.Combine(folder, "output_log.txt");
 				if (!File.Exists(filepath))
 					continue;
+				Thread.Sleep(500);
 				Application.OpenURL(filepath);
 				return;
 			}

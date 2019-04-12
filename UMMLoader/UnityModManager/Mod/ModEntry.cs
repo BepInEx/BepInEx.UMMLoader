@@ -84,6 +84,11 @@ namespace UnityModManagerNet
 			public Action<ModEntry> OnGUI;
 
 			/// <summary>
+			///     Called when closing mod GUI [0.16.0]
+			/// </summary>
+			public Action<ModEntry> OnHideGUI;
+
+			/// <summary>
 			///     Called by MonoBehaviour.LateUpdate [0.13.0]
 			/// </summary>
 			public Action<ModEntry, float> OnLateUpdate;
@@ -92,6 +97,11 @@ namespace UnityModManagerNet
 			///     Called when the UMM UI closes.
 			/// </summary>
 			public Action<ModEntry> OnSaveGUI;
+
+			/// <summary>
+			///     Called when opening mod GUI [0.16.0]
+			/// </summary>
+			public Action<ModEntry> OnShowGUI;
 
 			/// <summary>
 			///     Called to activate / deactivate the mod.
@@ -407,6 +417,8 @@ namespace UnityModManagerNet
 						OnSaveGUI = null;
 						OnUnload = null;
 						OnUpdate = null;
+						OnShowGUI = null;
+						OnHideGUI = null;
 						OnFixedUpdate = null;
 						OnLateUpdate = null;
 						CustomRequirements = null;

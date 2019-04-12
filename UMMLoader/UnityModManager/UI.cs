@@ -11,7 +11,7 @@ namespace UnityModManagerNet
 {
 	public partial class UnityModManager
 	{
-		public class UI : MonoBehaviour
+		public partial class UI : MonoBehaviour
 		{
 			public static GUIStyle window;
 			public static GUIStyle h1;
@@ -27,7 +27,13 @@ namespace UnityModManagerNet
 			/// </summary>
 			public static GUIStyle button = null;
 
-			private readonly string[] mCheckUpdateStrings = { "Never", "Automatic" };
+			private static readonly string[] mCheckUpdateStrings = { "Never", "Automatic" };
+
+			private static readonly string[] mHotkeyNames = { "CTRL+F10", "ScrollLock", "Num *", "~" };
+
+			private static readonly string[] mShowOnStartStrings = { "No", "Yes" };
+
+			private static int mLastWindowId;
 
 			private readonly List<Column> mColumns = new List<Column>
 			{
@@ -38,9 +44,14 @@ namespace UnityModManagerNet
 				new Column { name = "Status", width = 50 }
 			};
 
-			private readonly string[] mHotkeyNames = { "CTRL+F10", "ScrollLock", "Num *", "~" };
-
-			private readonly string[] mShowOnStartStrings = { "No", "Yes" };
+			private readonly List<Column> mOriginColumns = new List<Column>
+			{
+				new Column { name = "Name", width = 200, expand = true },
+				new Column { name = "Version", width = 60 },
+				new Column { name = "Requirements", width = 150, expand = true },
+				new Column { name = "On/Off", width = 50 },
+				new Column { name = "Status", width = 50 }
+			};
 
 			public int globalFontSize = 13;
 
@@ -52,14 +63,7 @@ namespace UnityModManagerNet
 			private bool mFirstLaunched;
 			private bool mInit;
 
-			private readonly List<Column> mOriginColumns = new List<Column>
-			{
-				new Column { name = "Name", width = 200, expand = true },
-				new Column { name = "Version", width = 60 },
-				new Column { name = "Requirements", width = 150, expand = true },
-				new Column { name = "On/Off", width = 50 },
-				new Column { name = "Status", width = 50 }
-			};
+			private int mPreviousShowModSettings = -1;
 
 			private Vector2[] mScrollPosition = new Vector2[0];
 
@@ -75,11 +79,61 @@ namespace UnityModManagerNet
 			private DrawTabDelegate[] tabRenderers;
 			public string[] tabs = { "Mods", "Logs", "Settings" };
 
+			private int ShowModSettings
+			{
+				get => mShowModSettings;
+				set
+				{
+					mShowModSettings = value;
+					if (mShowModSettings == mPreviousShowModSettings)
+						return;
+					if (mShowModSettings == -1)
+						HideMod(modEntries[mPreviousShowModSettings]);
+					else if (mPreviousShowModSettings == -1)
+						HideMod(modEntries[mShowModSettings]);
+					else
+					{
+						HideMod(modEntries[mPreviousShowModSettings]);
+						ShowMod(modEntries[mShowModSettings]);
+					}
+
+					mPreviousShowModSettings = mShowModSettings;
+				}
+			}
+
 			public static UI Instance { get; private set; }
 
 			public bool Opened { get; private set; }
 
 			internal bool GameCursorLocked { get; set; }
+
+			private void HideMod(ModEntry mod)
+			{
+				if (mod.Active && mod.OnHideGUI != null && mod.OnGUI != null)
+					try
+					{
+						mod.OnHideGUI(mod);
+					}
+					catch (Exception ex)
+					{
+						mod.Logger.Error("OnHideGUI: " + ex.GetType().Name + " - " + ex.Message);
+						Debug.LogException(ex);
+					}
+			}
+
+			private void ShowMod(ModEntry mod)
+			{
+				if (mod.Active && mod.OnShowGUI != null && mod.OnGUI != null)
+					try
+					{
+						mod.OnShowGUI(mod);
+					}
+					catch (Exception ex)
+					{
+						mod.Logger.Error("OnShowGUI: " + ex.GetType().Name + " - " + ex.Message);
+						Debug.LogException(ex);
+					}
+			}
 
 			internal static bool Load()
 			{
@@ -127,6 +181,12 @@ namespace UnityModManagerNet
 
 			private void Update()
 			{
+				if (Opened)
+				{
+					Cursor.lockState = CursorLockMode.None;
+					Cursor.visible = true;
+				}
+
 				float deltaTime = Time.deltaTime;
 				foreach (var mod in modEntries)
 					if (mod.Active && mod.OnUpdate != null)
@@ -241,6 +301,8 @@ namespace UnityModManagerNet
 				GUI.skin.horizontalSliderThumb.padding = RectOffset(Scale(7), 0);
 				GUI.skin.horizontalSliderThumb.margin = RectOffset(0);
 
+				GUI.skin.toggle.margin.left = Scale(10);
+
 				window.padding = RectOffset(Scale(5));
 				h1.fontSize = Scale(16);
 				h1.margin = RectOffset(Scale(0), Scale(5));
@@ -272,6 +334,27 @@ namespace UnityModManagerNet
 					PrepareGUI();
 					ScaleGUI();
 				}
+
+				var toRemove = new List<PopupToggleGroup_GUI>(0);
+				var anyRendered = false;
+				foreach (var item in PopupToggleGroup_GUI.mList)
+				{
+					item.mDestroyCounter.Add(Time.frameCount);
+					if (item.mDestroyCounter.Count > 1)
+					{
+						toRemove.Add(item);
+						continue;
+					}
+
+					if (item.Opened && !anyRendered)
+					{
+						item.Render();
+						anyRendered = true;
+					}
+				}
+
+				foreach (var item in toRemove)
+					PopupToggleGroup_GUI.mList.Remove(item);
 
 				if (Opened)
 				{
@@ -386,10 +469,10 @@ namespace UnityModManagerNet
 					if (mods[i].OnGUI != null || mods[i].CanReload)
 					{
 						if (GUILayout.Button(mods[i].Info.DisplayName, GUI.skin.label, GUILayout.ExpandWidth(true)))
-							mShowModSettings = mShowModSettings == i ? -1 : i;
+							ShowModSettings = ShowModSettings == i ? -1 : i;
 
 						if (GUILayout.Button(mShowModSettings == i ? Textures.SettingsActive : Textures.SettingsNormal, settings))
-							mShowModSettings = mShowModSettings == i ? -1 : i;
+							ShowModSettings = ShowModSettings == i ? -1 : i;
 					}
 					else
 						GUILayout.Label(mods[i].Info.DisplayName);
@@ -447,9 +530,12 @@ namespace UnityModManagerNet
 					else
 						GUILayout.Box(!mods[i].Enabled ? Textures.StatusInactive : Textures.StatusNeedRestart, status);
 
+					if (mods[i].ErrorOnLoading)
+						GUILayout.Label("!!!");
+
 					GUILayout.EndHorizontal();
 
-					if (mShowModSettings == i)
+					if (ShowModSettings == i)
 					{
 						if (mods[i].CanReload)
 						{
@@ -468,7 +554,7 @@ namespace UnityModManagerNet
 							}
 							catch (Exception e)
 							{
-								mShowModSettings = -1;
+								ShowModSettings = -1;
 								mods[i].Logger.Error("OnGUI: " + e.GetType().Name + " - " + e.Message);
 								Debug.LogException(e);
 							}
@@ -509,6 +595,10 @@ namespace UnityModManagerNet
 				GUILayout.Box(Textures.StatusNeedRestart, status);
 				GUILayout.Space(3);
 				GUILayout.Label("Need restart", GUILayout.ExpandWidth(false));
+				GUILayout.Space(10);
+				GUILayout.Label("!!!", GUILayout.ExpandWidth(false));
+				GUILayout.Space(3);
+				GUILayout.Label("Errors", GUILayout.ExpandWidth(false));
 				GUILayout.Space(10);
 				GUILayout.Label("[CTRL + LClick]", bold, GUILayout.ExpandWidth(false));
 				GUILayout.Space(3);
@@ -551,21 +641,21 @@ namespace UnityModManagerNet
 
 				GUILayout.BeginHorizontal();
 				GUILayout.Label("Hotkey", GUILayout.ExpandWidth(false));
-				Params.ShortcutKeyId = GUILayout.Toolbar(Params.ShortcutKeyId, mHotkeyNames, GUILayout.ExpandWidth(false));
+				ToggleGroup(Params.ShortcutKeyId, mHotkeyNames, i => { Params.ShortcutKeyId = i; }, null, GUILayout.ExpandWidth(false));
 				GUILayout.EndHorizontal();
 
 				GUILayout.Space(5);
 
 				GUILayout.BeginHorizontal();
 				GUILayout.Label("Check updates", GUILayout.ExpandWidth(false));
-				Params.CheckUpdates = GUILayout.Toolbar(Params.CheckUpdates, mCheckUpdateStrings, GUILayout.ExpandWidth(false));
+				ToggleGroup(Params.CheckUpdates, mCheckUpdateStrings, i => { Params.CheckUpdates = i; }, null, GUILayout.ExpandWidth(false));
 				GUILayout.EndHorizontal();
 
 				GUILayout.Space(5);
 
 				GUILayout.BeginHorizontal();
 				GUILayout.Label("Show this window on startup", GUILayout.ExpandWidth(false));
-				Params.ShowOnStart = GUILayout.Toolbar(Params.ShowOnStart, mShowOnStartStrings, GUILayout.ExpandWidth(false));
+				ToggleGroup(Params.ShowOnStart, mShowOnStartStrings, i => { Params.ShowOnStart = i; }, null, GUILayout.ExpandWidth(false));
 				GUILayout.EndHorizontal();
 
 				GUILayout.Space(5);
@@ -634,6 +724,15 @@ namespace UnityModManagerNet
 				if (open)
 					mFirstLaunched = true;
 
+				if (!open)
+				{
+					int i = ShowModSettings;
+					ShowModSettings = -1;
+					mShowModSettings = i;
+				}
+				else
+					ShowModSettings = mShowModSettings;
+
 				try
 				{
 					Opened = open;
@@ -687,13 +786,15 @@ namespace UnityModManagerNet
 
 			private static RectOffset RectOffset(int x, int y) { return new RectOffset(x, x, y, y); }
 
+			public static int GetNextWindowId() { return ++mLastWindowId; }
+
 			private delegate void DrawTabDelegate(ref UnityAction buttons);
 
 			private class Column
 			{
-				public bool skip;
 				public bool expand;
 				public string name;
+				public bool skip;
 				public float width;
 			}
 		}

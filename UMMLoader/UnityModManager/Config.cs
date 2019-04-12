@@ -88,6 +88,7 @@ namespace UnityModManagerNet
 		public class GameInfo
 		{
 			private static readonly string filepath = Path.Combine(Path.GetDirectoryName(typeof(GameInfo).Assembly.Location), "Config.xml");
+			public string Additionally;
 			public string EntryPoint;
 			public string Folder;
 			public string GameExe;
